@@ -1,0 +1,33 @@
+{
+  "name": "codeguardian",
+  "version": "0.1.0",
+  "description": "Model-independent, security-first, permission-aware, self-verifying AI software engineering platform",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "test": "node --import tsx --test tests/**/*.test.ts",
+    "test:unit": "node --import tsx --test tests/unit/**/*.test.ts",
+    "test:integration": "node --import tsx --test tests/integration/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "ai-agent",
+    "code-security",
+    "permission-engine",
+    "self-verifying",
+    "code-review"
+  ],
+  "dependencies": {
+    "@google/genai": "^2.19.0",
+    "diff": "^7.0.0",
+    "dotenv": "^17.4.2",
+    "typescript": "^5.7.3"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.0",
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.2"
+  }
+}
