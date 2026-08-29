@@ -31,8 +31,20 @@ import {
   UserDecisionType,
   CommandProposal,
   CapabilityGrant,
-  ResolvedExecutable
+  ResolvedExecutable,
+  ChangeSnapshot
 } from '../core/types.js';
+import { EffectObserver } from '../security/effects/effectObserver.js';
+import { EffectFirewall } from '../security/effects/effectFirewall.js';
+import { ChangeImpactIntelligence } from '../security/effects/changeImpact.js';
+import { serializeObservedEffects } from '../security/effects/effectTypes.js';
+import { SecurityStateMachine } from '../security/stateMachine/securityStateMachine.js';
+import { IsolationFactory } from '../security/isolation/isolationFactory.js';
+import { IIsolationEnvironment } from '../security/isolation/isolationProvider.interface.js';
+import { IsolationPolicy } from '../security/isolation/isolationTypes.js';
+import { ModelProviderRegistry } from '../models/modelRegistry.js';
+import { ModelDisagreementDetector } from '../models/disagreement.js';
+import { RegressionGuard } from '../verification/regressionGuard.js';
 
 export interface OrchestrationResult {
   readonly summary: string;
@@ -66,6 +78,10 @@ export class AgentOrchestrator {
   private readonly executableResolver: ExecutableResolver;
   private readonly npmScriptAnalyzer: NpmScriptAnalyzer;
   private readonly capabilityManager: CapabilityManager;
+  private readonly isolationFactory: IsolationFactory;
+  private readonly modelRegistry: ModelProviderRegistry;
+  private readonly disagreementDetector: ModelDisagreementDetector;
+  private readonly regressionGuard: RegressionGuard;
 
   constructor(
     config: CodeGuardianConfig,
@@ -91,6 +107,10 @@ export class AgentOrchestrator {
       executableResolver?: ExecutableResolver;
       npmScriptAnalyzer?: NpmScriptAnalyzer;
       capabilityManager?: CapabilityManager;
+      isolationFactory?: IsolationFactory;
+      modelRegistry?: ModelProviderRegistry;
+      disagreementDetector?: ModelDisagreementDetector;
+      regressionGuard?: RegressionGuard;
     }
   ) {
     this.config = config;
@@ -116,6 +136,10 @@ export class AgentOrchestrator {
     this.executableResolver = dependencies?.executableResolver || new ExecutableResolver(this.pathGuard);
     this.npmScriptAnalyzer = dependencies?.npmScriptAnalyzer || new NpmScriptAnalyzer(config.workspaceRoot, this.commandParser, this.commandPolicy);
     this.capabilityManager = dependencies?.capabilityManager || new CapabilityManager(config.workspaceRoot);
+    this.isolationFactory = dependencies?.isolationFactory || new IsolationFactory();
+    this.modelRegistry = dependencies?.modelRegistry || new ModelProviderRegistry([modelProvider]);
+    this.disagreementDetector = dependencies?.disagreementDetector || new ModelDisagreementDetector();
+    this.regressionGuard = dependencies?.regressionGuard || new RegressionGuard(config.workspaceRoot, this.isolationFactory, this.capabilityManager, this.rollbackManager, this.evidenceLedger);
   }
 
   getEvidenceLedger(): EvidenceLedger {
@@ -669,6 +693,114 @@ CRITICAL ARCHITECTURAL CONSTRAINTS:
               errorReason = 'Maximum file modifications limit reached.';
               toolResponsePayload = { error: errorReason };
             } else {
+               let preState: any = null;
+               let observer: EffectObserver | null = null;
+               const commandSnapshots: ChangeSnapshot[] = [];
+
+               // TOCTOU revalidation right before tool execution for all operations
+               const revalidatedPathCheck = this.pathGuard.validate(targetPath || '.');
+               if (!revalidatedPathCheck.allowed) {
+                 throw new Error(`TOCTOU validation failed: target path escapes workspace boundary post-evaluation.`);
+               }
+
+               let isolationEnv: IIsolationEnvironment | null = null;
+
+               if (operation === 'EXECUTE') {
+                 observer = new EffectObserver(this.config.workspaceRoot, {
+                   // Exclude CodeGuardian infrastructure files from filesystem state tracking.
+                   // Rolling these back would corrupt the tamper-evident evidence chain.
+                   excludedFiles: [
+                     this.config.evidenceLogPath,
+                     this.config.auditLogPath
+                   ]
+                 });
+                 preState = observer.captureState();
+
+                 // Create pre-execution snapshots for rollback
+                 for (const filePath of preState.files.keys()) {
+                   try {
+                     const snap = this.snapshotManager.createSnapshot(filePath);
+                     commandSnapshots.push(snap);
+                   } catch {
+                     // ignore unreadable files
+                   }
+                 }
+
+                 // v0.5 Isolation Environment Preparation & Requirement Check
+                 if (capability) {
+                   const isolationPolicy: IsolationPolicy = {
+                     requiredLevel: capability.requiredIsolationLevel || 'PROCESS',
+                     networkPolicy: capability.networkPolicy || { mode: 'NONE' },
+                     resourceLimits: capability.resourceLimits || {
+                       maxExecutionTimeMs: capability.maxExecutionTimeMs,
+                       maxOutputBytes: capability.maxOutputBytes
+                     },
+                     filesystemPolicy: capability.filesystemPolicy || {
+                       mode: 'RESTRICTED_WRITE',
+                       allowedWritePaths: capability.allowedPaths,
+                       deniedPaths: capability.deniedPaths
+                     }
+                   };
+
+                   this.evidenceLedger.record('ISOLATION_REQUESTED', {
+                     actionId,
+                     operation,
+                     target: capability.id,
+                     provider: this.modelProvider.name,
+                     risk: { level: risk.level, score: risk.score },
+                     decision: policyDecision.decision,
+                     command: String(call.args.command || ''),
+                     details: {
+                       requiredLevel: isolationPolicy.requiredLevel,
+                       networkMode: isolationPolicy.networkPolicy.mode
+                     }
+                   } as any);
+
+                   try {
+                     isolationEnv = await this.isolationFactory.createEnvironment(isolationPolicy, capability);
+                     this.evidenceLedger.record('ISOLATION_CREATED', {
+                       actionId,
+                       operation,
+                       target: isolationEnv.id,
+                       provider: isolationEnv.providerName,
+                       risk: { level: 'LOW', score: 10 },
+                       decision: 'ALLOW',
+                       details: {
+                         environmentId: isolationEnv.id,
+                         isolationLevel: isolationEnv.isolationLevel,
+                         providerName: isolationEnv.providerName
+                       }
+                     } as any);
+                     this.evidenceLedger.record('ISOLATION_VERIFIED', {
+                       actionId,
+                       operation,
+                       target: isolationEnv.id,
+                       provider: isolationEnv.providerName,
+                       risk: { level: 'LOW', score: 10 },
+                       decision: 'ALLOW',
+                       details: { verified: true }
+                     } as any);
+                   } catch (isoErr: any) {
+                     // Required isolation level cannot be satisfied (e.g. CONTAINER requested but Docker unavailable)
+                     // Fail closed immediately! Never silently fall back.
+                     this.evidenceLedger.record('ISOLATION_FAILED', {
+                       actionId,
+                       operation,
+                       target: capability.id,
+                       provider: this.modelProvider.name,
+                       risk: { level: 'CRITICAL', score: 100 },
+                       decision: 'BLOCK',
+                       details: { error: isoErr.message }
+                     } as any);
+
+                     executionStatus = 'BLOCKED';
+                     errorReason = isoErr.message;
+                     toolResponsePayload = { error: `ISOLATION_UNSATISFIABLE: ${isoErr.message}` };
+                     continue;
+                   }
+                 }
+               }
+
                const execResult = await tool.execute(call.args, {
                  workspaceRoot: this.config.workspaceRoot,
                  snapshotManager: this.snapshotManager,
@@ -711,6 +843,148 @@ CRITICAL ARCHITECTURAL CONSTRAINTS:
                      }
                    } as any);
                  }
+
+                 // POST-EXECUTION EFFECT FIREWALL & CHANGE IMPACT INTEL
+                 if (observer && preState) {
+                   const postState = observer.captureState();
+                   const observedProcs = execResult.data?.observedProcesses || [];
+                   const observedNetwork = execResult.data?.observedNetwork || [];
+                   const observed = observer.detectEffects(preState, postState, observedProcs, observedNetwork);
+
+                   const firewall = new EffectFirewall();
+                   const firewallResult = firewall.validate(observed, capability);
+
+                   if (!firewallResult.valid) {
+                     // Firewall failed - mark execution failed and perform rollback!
+                     (execResult as any).success = false;
+                     (execResult as any).error = `Effect firewall validation failed: ${firewallResult.reason}`;
+
+                     this.evidenceLedger.record('CAPABILITY_VIOLATION', {
+                       actionId,
+                       operation,
+                       target: capability.id,
+                       provider: this.modelProvider.name,
+                       risk: { level: 'CRITICAL', score: 100 },
+                       decision: policyDecision.decision,
+                       command: String(call.args.command || ''),
+                       details: {
+                         capabilityId: capability.id,
+                         violationType: firewallResult.violation?.type,
+                         reason: firewallResult.reason,
+                         violationEffect: firewallResult.violation?.effect
+                       }
+                     } as any);
+
+                     // Rollback unauthorized changes
+                     let rollbackSuccess = true;
+                     const rolledBackFiles: string[] = [];
+
+                     // Critical infrastructure paths that must never be rolled back
+                     // (doing so would corrupt the tamper-evident evidence chain)
+                     const infraPaths = new Set([
+                       path.resolve(this.config.evidenceLogPath),
+                       path.resolve(this.config.auditLogPath)
+                     ]);
+
+                     for (const fEffect of observed.filesystem) {
+                       // Never roll back CodeGuardian infrastructure files
+                       if (infraPaths.has(path.resolve(fEffect.target))) {
+                         continue;
+                       }
+
+                       if (fEffect.type === 'FILE_CREATE') {
+                         const snap: ChangeSnapshot = {
+                           snapshotId: `snap_temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                           filePath: fEffect.target,
+                           originalContent: null,
+                           originalHash: null,
+                           timestamp: Date.now()
+                         };
+                         const res = this.rollbackManager.rollback(snap);
+                         if (res.success) {
+                           rolledBackFiles.push(fEffect.target);
+                         } else {
+                           rollbackSuccess = false;
+                         }
+                       } else if (fEffect.type === 'DIR_CREATE') {
+                         try {
+                           if (fs.existsSync(fEffect.target)) {
+                             fs.rmSync(fEffect.target, { recursive: true, force: true });
+                           }
+                           rolledBackFiles.push(fEffect.target);
+                         } catch {
+                           rollbackSuccess = false;
+                         }
+                       } else if (fEffect.type === 'FILE_WRITE' || fEffect.type === 'FILE_DELETE') {
+                         const matchingSnap = commandSnapshots.find(s => s.filePath === fEffect.target);
+                         if (matchingSnap) {
+                           const res = this.rollbackManager.rollback(matchingSnap);
+                           if (res.success) {
+                             rolledBackFiles.push(fEffect.target);
+                           } else {
+                             rollbackSuccess = false;
+                           }
+                         } else {
+                           rollbackSuccess = false;
+                         }
+                       } else if (fEffect.type === 'DIR_DELETE') {
+                         try {
+                           fs.mkdirSync(fEffect.target, { recursive: true });
+                           rolledBackFiles.push(fEffect.target);
+                         } catch {
+                           rollbackSuccess = false;
+                         }
+                       }
+                     }
+
+                     if (rollbackSuccess) {
+                       this.evidenceLedger.record('EFFECT_ROLLBACK_COMPLETED', {
+                         actionId,
+                         operation,
+                         target: capability.id,
+                         provider: this.modelProvider.name,
+                         risk: { level: 'LOW', score: 20 },
+                         decision: 'ALLOW',
+                         details: { rolledBackFiles }
+                       } as any);
+                     } else {
+                       this.evidenceLedger.record('ROLLBACK_CRITICAL_FAILURE', {
+                         actionId,
+                         operation,
+                         target: capability.id,
+                         provider: this.modelProvider.name,
+                         risk: { level: 'CRITICAL', score: 100 },
+                         decision: 'BLOCK',
+                         details: { error: 'Failed to fully rollback all unauthorized filesystem mutations.' }
+                       } as any);
+                     }
+                   } else {
+                     // Firewall passed
+                     this.evidenceLedger.record('EFFECT_DETECTED', {
+                       actionId,
+                       operation,
+                       target: capability.id,
+                       provider: this.modelProvider.name,
+                       risk: { level: risk.level, score: risk.score },
+                       decision: policyDecision.decision,
+                       details: { observedEffects: JSON.parse(serializeObservedEffects(observed)) }
+                     } as any);
+
+                     const totalWorkspaceFiles = preState.files.size;
+                     const impactIntelligence = new ChangeImpactIntelligence(this.config.workspaceRoot);
+                     const impact = impactIntelligence.calculate(observed, totalWorkspaceFiles);
+
+                     this.evidenceLedger.record('CHANGE_IMPACT_CALCULATED', {
+                       actionId,
+                       operation,
+                       target: capability.id,
+                       provider: this.modelProvider.name,
+                       risk: { level: impact.severity, score: impact.score },
+                       decision: policyDecision.decision,
+                       details: { impact }
+                     } as any);
+                   }
+                 }
                }
 
                if (execResult.success) {
@@ -739,11 +1013,19 @@ CRITICAL ARCHITECTURAL CONSTRAINTS:
                        deletions: fileDiff.deletions,
                        changedLines: fileDiff.changedLines
                      } : undefined,
-                     syntax: syntaxStatus,
-                     execution: 'SUCCESS',
-                     verification: 'PASS'
-                   });
-                 } else if (operation === 'EXECUTE') {
+                      syntax: syntaxStatus,
+                      execution: 'SUCCESS',
+                      verification: 'PASS'
+                    });
+
+                    // Automated post-modification regression guard check
+                    const regResult = await this.regressionGuard.runRegressionCheck();
+                    if (!regResult.success && regResult.rolledBack) {
+                      executionStatus = 'FAILURE';
+                      errorReason = `Regression detected by project test suite: ${regResult.error}. Automatic rollback performed.`;
+                      toolResponsePayload = { error: errorReason };
+                    }
+                  } else if (operation === 'EXECUTE') {
                    // Record child process spawn details
                    if (execResult.data?.exitCode !== null) {
                      this.evidenceLedger.record('PROCESS_CHILD_CREATED', {

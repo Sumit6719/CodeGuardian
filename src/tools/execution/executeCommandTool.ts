@@ -89,7 +89,9 @@ export class ExecuteCommandTool implements ITool {
           stdoutHash,
           stderrHash,
           timedOut: result.timedOut,
-          durationMs: result.durationMs
+          durationMs: result.durationMs,
+          observedProcesses: result.observedProcesses,
+          observedNetwork: result.observedNetwork
         },
         executionTimeMs: Date.now() - startTime
       };

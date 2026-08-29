@@ -1,3 +1,6 @@
+import { ExpectedEffects } from '../security/effects/effectTypes.js';
+export { ExpectedEffects };
+
 /**
  * CodeGuardian Core Types and Contracts
  * Strongly typed discriminated unions and interfaces for the security pipeline.
@@ -201,6 +204,8 @@ export interface ProcessResult {
   readonly timedOut: boolean;
   readonly durationMs: number;
   readonly decision: CommandDecision;
+  readonly observedProcesses?: readonly any[];
+  readonly observedNetwork?: readonly any[];
 }
 
 /**
@@ -228,6 +233,11 @@ export interface CapabilityGrant {
   readonly maxOutputBytes: number;
   readonly grantedAt: number;
   readonly expiresAt: number;
+  readonly expectedEffects: ExpectedEffects;
+  readonly requiredIsolationLevel?: any;
+  readonly networkPolicy?: any;
+  readonly resourceLimits?: any;
+  readonly filesystemPolicy?: any;
 }
 
 /**

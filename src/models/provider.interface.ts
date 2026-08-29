@@ -37,5 +37,7 @@ export interface ModelGenerateResponse {
 
 export interface IModelProvider {
   readonly name: string;
+  readonly providerId: string;
+  isConfigured(): boolean;
   generateContent(request: ModelGenerateRequest): Promise<ModelGenerateResponse>;
 }

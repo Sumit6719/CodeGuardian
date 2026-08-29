@@ -34,21 +34,42 @@ export * from './tools/filesystem/readFileTool.js';
 export * from './tools/filesystem/writeFileTool.js';
 export * from './tools/execution/executeCommandTool.js';
 
-// Execution exports
+// Execution & Isolation exports
 export * from './execution/commandParser.js';
 export * from './execution/commandPolicy.js';
 export * from './execution/processExecutor.js';
 export * from './execution/executableResolver.js';
 export * from './execution/npmScriptAnalyzer.js';
 export * from './security/capabilities/capabilityManager.js';
+export * from './security/effects/effectTypes.js';
+export * from './security/effects/effectObserver.js';
+export * from './security/effects/effectFirewall.js';
+export * from './security/effects/changeImpact.js';
+export * from './security/isolation/isolationTypes.js';
+export * from './security/isolation/isolationProvider.interface.js';
+export * from './security/isolation/containerProvider.js';
+export * from './security/isolation/processProvider.js';
+export * from './security/isolation/hostFallbackProvider.js';
+export * from './security/isolation/isolationFactory.js';
+export * from './security/isolation/networkPolicy.js';
+export * from './security/stateMachine/securityStateMachine.js';
 
-// Audit & Adapters
+// Audit, Models & VS Code exports
 export * from './audit/auditLogger.js';
 export * from './audit/evidenceLedger.js';
 export * from './adapters/hostAdapter.interface.js';
 export * from './adapters/cli/cliAdapter.js';
 export * from './models/provider.interface.js';
 export * from './models/providers/geminiProvider.js';
+export * from './models/providers/claudeProvider.js';
+export * from './models/providers/openAIProvider.js';
+export * from './models/providers/ollamaProvider.js';
+export * from './models/modelRegistry.js';
+export * from './models/disagreement.js';
+export * from './verification/regressionGuard.js';
+export * from './vscode/webviewProtocol.js';
+export * from './vscode/extensionBridge.js';
+export * from './vscode/webviewPanelController.js';
 export * from './project/workspaceContext.js';
 export * from './agent/orchestrator.js';
 
@@ -66,8 +87,8 @@ export async function main() {
   const workspaceRoot = path.resolve(targetDir);
 
   console.log('╔══════════════════════════════════════════════════════════╗');
-  console.log('║              🛡️  CODEGUARDIAN v0.3.1                    ║');
-  console.log('║      Execution Hardening & Capability Foundation         ║');
+  console.log('║              🛡️  CODEGUARDIAN v0.6.0                    ║');
+  console.log('║   Multi-Model Independence & VS Code Integration System  ║');
   console.log('╚══════════════════════════════════════════════════════════╝');
   console.log(`\n📂 Target Workspace: ${workspaceRoot}`);
 

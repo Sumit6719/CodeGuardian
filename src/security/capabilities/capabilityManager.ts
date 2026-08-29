@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { CapabilityGrant, OperationType } from '../../core/types.js';
+import { CapabilityGrant, OperationType, ExpectedEffects } from '../../core/types.js';
 
 export class CapabilityManager {
   private readonly workspaceRoot: string;
@@ -19,6 +19,14 @@ export class CapabilityManager {
       maxOutputBytes?: number;
       allowedPaths?: string[];
       deniedPaths?: string[];
+      allowNetwork?: boolean;
+      allowedProcesses?: string[];
+      requiredIsolationLevel?: any;
+      allowedHosts?: string[];
+      allowedPorts?: number[];
+      maxMemoryMb?: number;
+      maxCpuPercent?: number;
+      maxProcesses?: number;
     }
   ): CapabilityGrant {
     const id = `cap_${crypto.randomUUID()}`;
@@ -29,18 +37,44 @@ export class CapabilityManager {
     // If blocked by policy, processExecution is false.
     const processExecution = policyDecision !== 'BLOCK';
 
+    const expectedEffects: ExpectedEffects = {
+      allowedPaths: customOptions?.allowedPaths || [this.workspaceRoot],
+      deniedPaths: customOptions?.deniedPaths || [],
+      allowNetwork: customOptions?.allowNetwork ?? false,
+      allowedProcesses: customOptions?.allowedProcesses || []
+    };
+
     return {
       id,
       operation,
       workspaceRoot: this.workspaceRoot,
       allowedPaths: customOptions?.allowedPaths || [this.workspaceRoot],
       deniedPaths: customOptions?.deniedPaths || [],
-      network: 'NONE', // No network permission allowed by default
+      network: customOptions?.allowNetwork ? 'FULL' : 'NONE',
       processExecution,
       maxExecutionTimeMs: customOptions?.maxExecutionTimeMs ?? 60000, // 60s default
       maxOutputBytes: customOptions?.maxOutputBytes ?? 100 * 1024, // 100KB default
       grantedAt,
-      expiresAt
+      expiresAt,
+      expectedEffects,
+      requiredIsolationLevel: customOptions?.requiredIsolationLevel || 'PROCESS',
+      networkPolicy: {
+        mode: customOptions?.allowNetwork ? 'FULL' : 'NONE',
+        allowedHosts: customOptions?.allowedHosts,
+        allowedPorts: customOptions?.allowedPorts
+      },
+      resourceLimits: {
+        maxExecutionTimeMs: customOptions?.maxExecutionTimeMs ?? 60000,
+        maxOutputBytes: customOptions?.maxOutputBytes ?? 100 * 1024,
+        maxMemoryMb: customOptions?.maxMemoryMb ?? 512,
+        maxCpuPercent: customOptions?.maxCpuPercent ?? 80,
+        maxProcesses: customOptions?.maxProcesses ?? 20
+      },
+      filesystemPolicy: {
+        mode: 'RESTRICTED_WRITE',
+        allowedWritePaths: customOptions?.allowedPaths || [this.workspaceRoot],
+        deniedPaths: customOptions?.deniedPaths || []
+      }
     };
   }
 

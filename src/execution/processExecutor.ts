@@ -11,6 +11,7 @@ import {
 import { PathGuard } from '../security/pathGuard.js';
 import { PathTraversalError } from '../core/errors.js';
 import { ParsedCommand } from './commandParser.js';
+import { NetworkEffect, ProcessEffect } from '../security/effects/effectTypes.js';
 
 export interface ProcessExecutorOptions {
   readonly timeoutMs?: number;
@@ -290,7 +291,15 @@ export class SecureProcessExecutor {
           stderr: stderrData + `\nExecution Error: ${err.message}`,
           timedOut: false,
           durationMs: Date.now() - startTime,
-          decision
+          decision,
+          observedProcesses: child.pid ? [{
+            type: 'PROCESS_SPAWN',
+            target: parsed.executable,
+            timestamp: startTime,
+            pid: child.pid,
+            commandLine: proposal.command
+          }] : [],
+          observedNetwork: this.detectNetworkHeuristics(parsed.executable, parsed.args)
         });
       });
 
@@ -307,10 +316,60 @@ export class SecureProcessExecutor {
           stderr: stderrData,
           timedOut,
           durationMs: Date.now() - startTime,
-          decision
+          decision,
+          observedProcesses: child.pid ? [{
+            type: 'PROCESS_SPAWN',
+            target: parsed.executable,
+            timestamp: startTime,
+            pid: child.pid,
+            commandLine: proposal.command
+          }] : [],
+          observedNetwork: this.detectNetworkHeuristics(parsed.executable, parsed.args)
         });
       });
     });
+  }
+
+  private detectNetworkHeuristics(executable: string, args: readonly string[]): NetworkEffect[] {
+    const networkEffects: NetworkEffect[] = [];
+    const networkTools = ['curl', 'wget', 'ping', 'ssh', 'scp', 'sftp', 'nc', 'netcat', 'telnet', 'ftp', 'nslookup', 'dig'];
+
+    const exeName = path.basename(executable).toLowerCase().replace(/\.(exe|cmd|bat)$/i, '');
+    let isNetTool = networkTools.includes(exeName);
+
+    const urlOrIpRegex = /(?:https?:\/\/)?([a-zA-Z0-9\-\.]+)(?::(\d+))?/i;
+
+    for (const arg of args) {
+      if (arg.startsWith('-')) continue;
+      const match = arg.match(urlOrIpRegex);
+      if (match && match[1]) {
+        const host = match[1];
+        if (host.includes('.') || host === 'localhost' || /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
+          const port = match[2] ? parseInt(match[2], 10) : (arg.includes('https') ? 443 : 80);
+          networkEffects.push({
+            type: 'NET_CONNECT',
+            target: `${host}:${port}`,
+            timestamp: Date.now(),
+            host,
+            port,
+            protocol: 'TCP'
+          });
+        }
+      }
+    }
+
+    if (isNetTool && networkEffects.length === 0) {
+      networkEffects.push({
+        type: 'NET_CONNECT',
+        target: 'unknown-host:80',
+        timestamp: Date.now(),
+        host: 'unknown-host',
+        port: 80,
+        protocol: 'TCP'
+      });
+    }
+
+    return networkEffects;
   }
 
   /**

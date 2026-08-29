@@ -93,28 +93,16 @@ AI Model Proposal
 
 ---
 
-## 5. Current Capabilities (v0.2 — Evidence & Verification)
+## 5. Current Capabilities (v0.5 — OS Isolation & Network Containment)
 
-- **Diff Engine**: Structured comparison of original vs proposed contents, calculating additions, deletions, changed lines, and SHA-256 hashes (`src/verification/diffEngine.ts`).
-- **Change Contract**: Formal schema binding the AI's requested action, security risk assessment, policy decision, before/after disk states, diff summary, and verification outcomes (`src/verification/changeContract.ts`).
-- **Isolated Syntax Verification**: In-memory AST and grammar validation supporting JavaScript, TypeScript, JSX, TSX, CSS, HTML, and JSON without executing application code (`src/verification/syntaxVerifier.ts`).
-- **Pre-Apply Gatekeeping**: Syntactically invalid modifications are rejected immediately with targeted compiler feedback back to the model, preventing corrupt writes and unnecessary user prompts.
-- **Post-Apply Integrity & Verified Rollback**: Validates SHA-256 hashes and syntax of files written to disk. If integrity or syntax fails, `RollbackManager` restores the original state and cryptographically verifies the restored hash (`src/verification/rollbackManager.ts`).
-- **Tamper-Evident Evidence Ledger**: Cryptographic SHA-256 hash chain linking every action, decision, diff, verification result, and hash. Unauthorized alterations or deletions are immediately detected via `verifyLedgerIntegrity()` (`src/audit/evidenceLedger.ts`).
-- **Workspace Boundary Enforcement**: `PathGuard` provides canonical path resolution, case-insensitive boundary checks, and null-byte injection defense (`src/security/pathGuard.ts`).
-- **Deterministic Risk & Policy Engine**: Mathematical risk scoring and fail-closed permission evaluation (`src/permissions/policyEngine.ts`).
-- **Interactive CLI Approval**: Prompts user with unified diffs (+lines, -lines) supporting `[A] Allow once`, `[S] Allow for session`, and `[D] Deny`.
-- **Append-Only Audit Trail**: Structured JSONL log (`.codeguardian/audit.jsonl`) recording every proposal, risk score, decision, user response, and file hash.
-- **Model Abstraction Layer**: Generic `IModelProvider` interface with `@google/genai` (Gemini) as the initial implementation.
-
----
-
-## 6. Current Limitations (Honest Assessment)
-
-- **Automated Test Execution (Milestone v0.3)**: v0.2 enforces syntax and cryptographic integrity checks, but does not yet orchestrate automated test suites (e.g. Jest, Vitest) to check for regression bugs.
-- **Single Model Provider**: Gemini is currently the active provider; Anthropic Claude, OpenAI, and local Ollama providers are scheduled for v0.4.
-- **No Command Execution**: Shell execution is intentionally disabled until process sandboxing primitives are constructed.
-- **CLI-Only Interface**: Decoupled from VS Code APIs, with VS Code Webview extension planned for v0.5.
+- **OS-Level Sandbox Isolation**: Supports `ContainerIsolationProvider` (Docker containers with `--read-only`, `--user node`, `--cap-drop=ALL`, `--network none`), `ProcessIsolationProvider` (OS process groups/Job Objects), and `HostFallbackProvider` (`src/security/isolation/`).
+- **Network Containment**: Enforces `NetworkPolicyMode` (`NONE`, `ALLOWLIST`) via `NetworkPolicyValidator`. Mode `NONE` revokes network interfaces in containers and blocks network side effects.
+- **Fail-Closed Isolation Selection**: `IsolationFactory` strictly compares required isolation strength against provider capabilities. If container isolation is required but Docker is unavailable, the pipeline **fails closed (`BLOCK`)**.
+- **Security Lifecycle State Machine**: Enforces a 12-state fail-closed transition lifecycle (`PROPOSED` → `PARSED` → `POLICY_CHECKED` → `CAPABILITY_GRANTED` → `ISOLATION_PREPARED` → `ISOLATION_VERIFIED` → `PROCESS_STARTED` → `PROCESS_RUNNING` → `PROCESS_TERMINATED` → `EFFECTS_VERIFIED` → `COMPLETED`).
+- **Effect Firewall & Impact Intelligence**: Post-execution filesystem, network, and process diffing (`EffectObserver`), 6-rule capability validation (`EffectFirewall`), and blast radius scoring (`ChangeImpactIntelligence`).
+- **Diff Engine & AST Verification**: In-memory syntax verification for JS, TS, JSX, TSX, HTML, CSS, JSON (`SyntaxVerifier`), structured diff metrics (`DiffEngine`), and SHA-256 integrity hashing.
+- **Tamper-Evident Evidence Ledger**: Append-only cryptographic hash chain recording all state transitions, capability grants, sandbox events, and effect validations (`EvidenceLedger`).
+- **TOCTOU Hardening**: Pre-execution `PathGuard` revalidation for all tool operations immediately before execution.
 
 ---
 
@@ -215,8 +203,9 @@ npm run test:integration
 | Version | Milestone | Key Deliverables | Status |
 | :---: | :--- | :--- | :---: |
 | **v0.1** | **Safe Modular Foundation** | PathGuard, RiskEngine, PolicyEngine, Atomic Writer, Snapshot Manager, CLI User Approval, Audit Logger | **COMPLETED** |
-| **v0.2** | **Evidence & Verification** | AST Syntax verification, Diff change contracts, Rollback command | *Upcoming* |
-| **v0.3** | **Regression Guard** | Automated test suite execution, regression detection, self-correction | *Planned* |
-| **v0.4** | **Model Independence** | Claude, OpenAI, Ollama adapters, context token budget manager | *Planned* |
-| **v0.5** | **VS Code Integration** | VS Code Extension adapter, Webview UI, interactive diff viewer | *Planned* |
+| **v0.2** | **Evidence & Verification** | AST Syntax verification, Diff change contracts, Rollback command | **COMPLETED** |
+| **v0.3** | **Execution Hardening** | CommandParser, CommandPolicy, ExecutableResolver, NpmScriptAnalyzer, ProcessExecutor | **COMPLETED** |
+| **v0.4** | **Effect Firewall** | Filesystem observation, EffectFirewall 6-rule validation, ChangeImpact Intelligence | **COMPLETED** |
+| **v0.5** | **OS Isolation & Sandbox** | ContainerIsolationProvider, ProcessIsolationProvider, SecurityStateMachine, NetworkContainment | **COMPLETED** |
+| **v0.6** | **Multi-Model & VS Code** | Claude, OpenAI, Ollama drivers, DisagreementDetector, VS Code Extension Bridge, Webview Protocol, RegressionGuard | **COMPLETED** |
 | **v1.0** | **Production Release** | Custom policy files, blast radius visualizer, benchmarking suite | *Target* |

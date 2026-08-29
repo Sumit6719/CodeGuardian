@@ -10,13 +10,19 @@ import { NormalizedToolDeclaration } from '../../tools/toolRegistry.js';
 
 export class GeminiProvider implements IModelProvider {
   readonly name = 'gemini';
+  readonly providerId = 'gemini';
   private readonly ai: GoogleGenAI;
   private readonly modelName: string;
+  private readonly apiKey: string | undefined;
 
   constructor(apiKey?: string, modelName?: string) {
-    const key = apiKey || process.env.GEMINI_API_KEY;
-    this.ai = new GoogleGenAI({ apiKey: key });
+    this.apiKey = apiKey || process.env.GEMINI_API_KEY;
+    this.ai = new GoogleGenAI({ apiKey: this.apiKey || 'UNCONFIGURED' });
     this.modelName = modelName || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  }
+
+  isConfigured(): boolean {
+    return Boolean(this.apiKey && this.apiKey.trim().length > 0);
   }
 
   async generateContent(request: ModelGenerateRequest): Promise<ModelGenerateResponse> {

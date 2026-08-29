@@ -1,6 +1,6 @@
 {
   "name": "codeguardian",
-  "version": "0.1.0",
+  "version": "0.6.0",
   "description": "Model-independent, security-first, permission-aware, self-verifying AI software engineering platform",
   "type": "module",
   "main": "dist/index.js",
