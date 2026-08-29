@@ -1,23 +1,89 @@
 {
   "name": "codeguardian",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Model-independent, security-first, permission-aware, self-verifying AI software engineering platform",
+  "publisher": "codeguardian",
   "type": "module",
   "main": "dist/index.js",
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=18.0.0"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages",
+    "Security"
+  ],
+  "activationEvents": [
+    "onCommand:codeguardian.start",
+    "onCommand:codeguardian.audit",
+    "onCommand:codeguardian.rollback",
+    "onCommand:codeguardian.openPanel",
+    "onCommand:codeguardian.showEvidence"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "codeguardian.start",
+        "title": "CodeGuardian: Start Governed Agent",
+        "category": "CodeGuardian"
+      },
+      {
+        "command": "codeguardian.audit",
+        "title": "CodeGuardian: Audit Security Ledger",
+        "category": "CodeGuardian"
+      },
+      {
+        "command": "codeguardian.rollback",
+        "title": "CodeGuardian: Atomic Rollback",
+        "category": "CodeGuardian"
+      },
+      {
+        "command": "codeguardian.openPanel",
+        "title": "CodeGuardian: Open Security Panel",
+        "category": "CodeGuardian"
+      },
+      {
+        "command": "codeguardian.showEvidence",
+        "title": "CodeGuardian: Show Evidence Chain",
+        "category": "CodeGuardian"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codeguardian-sidebar",
+          "title": "CodeGuardian",
+          "icon": "$(shield)"
+        }
+      ]
+    },
+    "views": {
+      "codeguardian-sidebar": [
+        {
+          "id": "codeguardian-view",
+          "name": "CodeGuardian Security Panel",
+          "type": "webview"
+        }
+      ]
+    }
+  },
   "scripts": {
     "build": "tsc",
     "start": "tsx src/index.ts",
     "test": "node --import tsx --test tests/**/*.test.ts",
     "test:unit": "node --import tsx --test tests/unit/**/*.test.ts",
     "test:integration": "node --import tsx --test tests/integration/**/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "package": "vsce package --no-dependencies"
   },
   "keywords": [
     "ai-agent",
     "code-security",
     "permission-engine",
     "self-verifying",
-    "code-review"
+    "code-review",
+    "vscode-extension"
   ],
   "dependencies": {
     "@google/genai": "^2.19.0",
@@ -28,6 +94,8 @@
   "devDependencies": {
     "@types/diff": "^7.0.0",
     "@types/node": "^22.13.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
     "tsx": "^4.19.2"
   }
 }

@@ -1,0 +1,13 @@
+.vscode/**
+.gitignore
+.vscodeignore
+.env
+.env.*
+.codeguardian/**
+*.log
+docs/**
+tests/**
+scratch/**
+node_modules/**
+src/**
+tsconfig.json

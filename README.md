@@ -167,16 +167,10 @@ npm start
 npm start -- ./some-project
 ```
 
-### Build to JavaScript (dist/)
+### VS Code Extension Packaging (VSIX)
 
 ```bash
-npm run build
-```
-
-### Type Checking
-
-```bash
-npm run typecheck
+npm run package
 ```
 
 ---
@@ -207,5 +201,6 @@ npm run test:integration
 | **v0.3** | **Execution Hardening** | CommandParser, CommandPolicy, ExecutableResolver, NpmScriptAnalyzer, ProcessExecutor | **COMPLETED** |
 | **v0.4** | **Effect Firewall** | Filesystem observation, EffectFirewall 6-rule validation, ChangeImpact Intelligence | **COMPLETED** |
 | **v0.5** | **OS Isolation & Sandbox** | ContainerIsolationProvider, ProcessIsolationProvider, SecurityStateMachine, NetworkContainment | **COMPLETED** |
-| **v0.6** | **Multi-Model & VS Code** | Claude, OpenAI, Ollama drivers, DisagreementDetector, VS Code Extension Bridge, Webview Protocol, RegressionGuard | **COMPLETED** |
+| **v0.6** | **Multi-Model Foundation** | Claude, OpenAI, Ollama drivers, DisagreementDetector, VS Code Extension Bridge, Webview Protocol, RegressionGuard | **COMPLETED** |
+| **v0.7** | **Functional VS Code Extension** | VS Code extension entrypoint, Security Webview UI panel, approval workflow, VSIX packaging | **COMPLETED** |
 | **v1.0** | **Production Release** | Custom policy files, blast radius visualizer, benchmarking suite | *Target* |

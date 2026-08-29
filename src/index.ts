@@ -70,6 +70,8 @@ export * from './verification/regressionGuard.js';
 export * from './vscode/webviewProtocol.js';
 export * from './vscode/extensionBridge.js';
 export * from './vscode/webviewPanelController.js';
+export * from './vscode/webviewContent.js';
+export * from './vscode/extension.js';
 export * from './project/workspaceContext.js';
 export * from './agent/orchestrator.js';
 
